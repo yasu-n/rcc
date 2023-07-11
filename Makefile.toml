@@ -1,0 +1,18 @@
+[tasks.test]
+command = "./test.fish"
+
+[tasks.debug]
+script = ['''
+    #!/usr/bin/env fish
+    set fish_trace 1
+    source ./test.fish
+''']
+
+[tasks.remove]
+script = "rm -f tmp*"
+
+[tasks.clean]
+dependencies = ["remove"]
+command = "cargo"
+args = ["clean"]
+
