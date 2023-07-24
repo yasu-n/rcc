@@ -1,31 +1,12 @@
-use core::fmt;
+use crate::Loc;
+use crate::Annot;
+use crate::error::LexError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TokenKind {
     Plus,
     Minus,
     Number(u64),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Loc(usize, usize);
-
-impl fmt::Display for Loc {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}-{}", self.0, self.1)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Annot<T> {
-    pub value: T,
-    pub loc: Loc,
-}
-
-impl<T> Annot<T> {
-    pub fn new(value: T, loc: Loc) -> Self {
-        Self { value, loc }
-    }
 }
 
 pub type Token = Annot<TokenKind>;
@@ -42,7 +23,7 @@ impl Token {
     }
 }
 
-pub fn lex(input: &str) -> Result<Vec<Token>, String> {
+pub fn lex(input: &str) -> Result<Vec<Token>, LexError> {
     let mut tokens = Vec::new();
     let input = input.as_bytes();
     let mut pos = 0;
@@ -64,19 +45,19 @@ pub fn lex(input: &str) -> Result<Vec<Token>, String> {
                 let ((), p) = skip_space(input, pos)?;
                 pos = p;
             }
-            b => return Err(format!("Invalid value: {}", b as char)),
+            b => return Err(LexError::invalid_char(b as char, Loc(pos, pos + 1)))
         }
     }
 
     Ok(tokens)
 }
 
-fn consume_byte(input: &[u8], pos: usize, b: u8) -> Result<(u8, usize), String> {
+fn consume_byte(input: &[u8], pos: usize, b: u8) -> Result<(u8, usize), LexError> {
     if input.len() < pos {
-        return Err(String::from("EOF"));
+        return Err(LexError::eof(Loc(pos, pos + 1)));
     }
     if input[pos] != b {
-        return Err(String::from("invalid value"));
+        return Err(LexError::invalid_char(b as char, Loc(pos, pos + 1)));
     }
     Ok((b, pos + 1))
 }
@@ -88,7 +69,7 @@ fn recognize_many(input: &[u8], mut pos: usize, mut f: impl FnMut(u8) -> bool) -
     pos
 }
 
-fn lex_number(input: &[u8], pos: usize) -> Result<(Token, usize), String> {
+fn lex_number(input: &[u8], pos: usize) -> Result<(Token, usize), LexError> {
     use std::str::from_utf8;
     let start = pos;
     let end = recognize_many(input, pos, |b| b"1234567890".contains(&b));
@@ -96,15 +77,15 @@ fn lex_number(input: &[u8], pos: usize) -> Result<(Token, usize), String> {
     Ok((Token::number(n, Loc(start, end)), end))
 }
 
-fn lex_plus(input: &[u8], start: usize) -> Result<(Token, usize), String> {
+fn lex_plus(input: &[u8], start: usize) -> Result<(Token, usize), LexError> {
     consume_byte(input, start, b'+').map(|(_, end)| (Token::plus(Loc(start, end)), end))
 }
 
-fn lex_minus(input: &[u8], start: usize) -> Result<(Token, usize), String> {
+fn lex_minus(input: &[u8], start: usize) -> Result<(Token, usize), LexError> {
     consume_byte(input, start, b'-').map(|(_, end)| (Token::minus(Loc(start, end)), end))
 }
 
-fn skip_space(input: &[u8], pos: usize) -> Result<((), usize), String> {
+fn skip_space(input: &[u8], pos: usize) -> Result<((), usize), LexError> {
     let pos = recognize_many(input, pos, |b| b" \n\t".contains(&b));
     Ok(((), pos))
 }
@@ -126,6 +107,17 @@ fn test_lex() {
         Token::number(34, Loc(6, 8)),
         Token::minus(Loc(9, 10)),
         Token::number(5, Loc(11, 12)),
+    ];
+    assert_eq!(Ok(expected), tokens);
+
+    let input = " 3 - 4 - ";
+    let tokens = lex(input);
+
+    let expected = vec![
+        Token::number(3, Loc(1, 2)),
+        Token::minus(Loc(3, 4)),
+        Token::number(4, Loc(5, 6)),
+        Token::minus(Loc(7, 8)),
     ];
     assert_eq!(Ok(expected), tokens);
 }
